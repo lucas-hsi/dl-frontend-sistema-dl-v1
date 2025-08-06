@@ -1,0 +1,102 @@
+# ========================================
+# DL SISTEMA - GITIGNORE PRINCIPAL
+# ========================================
+
+# ===== ARQUIVOS TEMPORÁRIOS =====
+*.tmp
+*.temp
+*.cache
+$null
+temp_*.txt
+
+# ===== BACKUPS E LEGACY =====
+postgres_backup_*/
+_legacy/
+legacy_*.md
+legacy_selection_report.md
+
+# ===== SCRIPTS TEMPORÁRIOS =====
+setup_*.ps1
+reset_*.ps1
+CLEAN_*.ps1
+test_*.py
+check_*.py
+list_*.py
+
+# ===== RESULTADOS DE TESTE =====
+test-results/
+test-results-*/
+playwright-report/
+visual-report/
+reports/
+
+# ===== BANCOS DE DADOS =====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== LOGS =====
+*.log
+logs/
+log/
+
+# ===== ENVIRONMENT =====
+.env
+.env.local
+.env.production
+.env.test
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== NODE =====
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== PYTHON =====
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ===== BUILD =====
+dist/
+build/
+*.egg-info/
+
+# ===== COVERAGE =====
+.coverage
+coverage.xml
+htmlcov/
+
+# ===== ARTIFACTS =====
+artifacts/
+*.tar.gz
+*.zip
+
+# ===== DOCKER =====
+.dockerignore
+
+# ===== NGINX =====
+nginx/logs/
+nginx/cache/
+
+# ===== PACKAGE LOCK (ROOT) =====
+package-lock.json 

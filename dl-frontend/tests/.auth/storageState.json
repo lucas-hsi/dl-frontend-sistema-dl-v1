@@ -1,0 +1,22 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "auth_token",
+          "value": "auth_token_1754183662396"
+        },
+        {
+          "name": "user",
+          "value": "{\"id\":1754183662326,\"nome\":\"Admin Teste\",\"email\":\"admin@dl.com\",\"username\":\"admin@dl.com\",\"perfil\":\"GESTOR\",\"permissoes\":[\"vendedores\",\"anuncios\",\"performance\",\"gestao\",\"relatorios\",\"configuracoes\"]}"
+        },
+        {
+          "name": "perfil_autenticado",
+          "value": "GESTOR"
+        }
+      ]
+    }
+  ]
+}

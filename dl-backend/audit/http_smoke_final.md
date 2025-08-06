@@ -1,0 +1,47 @@
+﻿# HTTP Smoke Test Final - Rotas Identificadas - 2025-08-04T22:23:25
+BASE_URL = http://127.0.0.1:8000
+
+## Health
+- GET http://127.0.0.1:8000/__health -> 200
+  body: {"status":"ok"}
+- GET http://127.0.0.1:8000/api/v1/utils/health-check -> 200
+  body: {"ok":true,"data":"API is running smoothly!","error":null}
+
+## Criar usuario via signup
+- POST http://127.0.0.1:8000/api/v1/signup -> 500
+  body: 
+
+## Login com usuario criado
+- POST http://127.0.0.1:8000/api/v1/auth/login -> -1
+  body: A conexão subjacente estava fechada: Uma conexão que deveria ser mantida ativa foi fechada pelo servidor.
+- Falha no login (codigo=-1)
+
+## /api/v1/me (com token)
+- pulado (sem token)
+
+## /api/v1/produtos-estoque/ (com token)
+- GET http://127.0.0.1:8000/api/v1/produtos-estoque/?page=1&size=5 -> 401
+  body: 
+
+## Rotas de usuarios (com token)
+- GET http://127.0.0.1:8000/api/v1/ -> 401
+  body: 
+
+## Rotas de items (com token)
+- GET http://127.0.0.1:8000/api/v1/items/items/ -> 401
+  body: 
+
+## Rotas de autenticacao
+- POST http://127.0.0.1:8000/api/v1/login/access-token -> 422
+  body: 
+- POST http://127.0.0.1:8000/api/v1/login/test-token -> 401
+  body: 
+
+## Rotas esperadas do corredor (checagem de presenca)
+- POST http://127.0.0.1:8000/orcamentos/draft -> 404
+  body: 
+- POST http://127.0.0.1:8000/clientes/draft -> 404
+  body: 
+Se retornarem 404 ou 405, confirmamos gap a implementar.
+
+Concluido.

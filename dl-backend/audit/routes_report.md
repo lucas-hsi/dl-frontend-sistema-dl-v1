@@ -1,0 +1,47 @@
+# Routes Report - 2025-08-05T00:35:34.625370
+- **GET** `/__health` -> `health`
+- **GET** `/__internal__/openapi.json` -> `openapi_internal`
+- **POST** `/api/v1/auth/login` -> `auth_login`
+  - doc: Endpoint de login usando JSON com email e senha.
+Retorna token JWT e dados do usuário em caso de sucesso.
+- **POST** `/api/v1/login/access-token` -> `login_access_token`
+  - doc: OAuth2 compatible token login, get an access token for future requests
+- **GET** `/api/v1/` -> `read_users`
+  - doc: Retrieve users.
+- **POST** `/api/v1/` -> `create_user`
+  - doc: Create new user.
+- **GET** `/api/v1/me` -> `read_user_me`
+  - doc: Get current user's data, returned in the standard ApiResponse format.
+- **PATCH** `/api/v1/me` -> `update_user_me`
+  - doc: Update own user.
+- **PATCH** `/api/v1/me/password` -> `update_password_me`
+  - doc: Update own password.
+- **DELETE** `/api/v1/me` -> `delete_user_me`
+  - doc: Delete own user.
+- **POST** `/api/v1/signup` -> `register_user`
+  - doc: Create new user without the need to be logged in.
+- **GET** `/api/v1/{user_id}` -> `read_user_by_id`
+  - doc: Get a specific user by id.
+- **PATCH** `/api/v1/{user_id}` -> `update_user`
+  - doc: Update a user.
+- **DELETE** `/api/v1/{user_id}` -> `delete_user`
+  - doc: Delete a user.
+- **GET** `/api/v1/items/items/` -> `read_items`
+  - doc: Retrieve items.
+- **GET** `/api/v1/items/items/{id}` -> `read_item`
+  - doc: Get item by ID.
+- **POST** `/api/v1/items/items/` -> `create_item`
+  - doc: Create new item.
+- **PUT** `/api/v1/items/items/{id}` -> `update_item`
+  - doc: Update an item.
+- **DELETE** `/api/v1/items/items/{id}` -> `delete_item`
+  - doc: Delete an item.
+- **GET** `/api/v1/produtos-estoque/` -> `read_produtos`
+  - doc: Recupera uma lista paginada de produtos do estoque.
+Requer autenticação.
+- **POST** `/api/v1/utils/test-email/` -> `test_email`
+  - doc: Test emails.
+- **GET** `/api/v1/utils/health-check` -> `health_check`
+  - doc: Endpoint padrão para verificar a disponibilidade da aplicação.
+- **POST** `/api/v1/private/private/users/` -> `create_user`
+  - doc: Create a new user.

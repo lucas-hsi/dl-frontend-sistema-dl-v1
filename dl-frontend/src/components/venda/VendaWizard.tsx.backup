@@ -1,0 +1,909 @@
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { useVenda } from "@/contexts/VendaContext";
+import { ChevronLeft, ChevronRight, Check, ShoppingCart, User, CreditCard, Package, Download, Plus, Truck, Search } from "lucide-react";
+import { ItemOrcamento } from "@/types/orcamento";
+import { buscarClientes } from "@/services/vendaService";
+import { Cliente } from "@/types/venda";
+import AnexarFreteModal from "./AnexarFreteModal";
+import BuscaProdutoInput from "./BuscaProdutoInput";
+
+// Tipos
+interface ProdutoAvulso {
+  nome: string;
+  preco: number;
+  marca: string;
+  modelo: string;
+  quantidade: number;
+  observacoes?: string;
+  imagem?: File;
+}
+
+interface ProdutoTiny {
+  id: string;
+  nome: string;
+  codigo?: string;
+  preco?: number;
+  saldo_fisico?: number;
+  unidade?: string;
+  categoria?: string;
+}
+
+// Componente principal do wizard
+const VendaWizard: React.FC = () => {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [buscaProduto, setBuscaProduto] = useState("");
+  const [produtosEncontrados, setProdutosEncontrados] = useState<ProdutoTiny[]>([]);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoTiny | null>(null);
+  const [quantidade, setQuantidade] = useState(1);
+  const [produtoAvulso, setProdutoAvulso] = useState<ProdutoAvulso>({
+    nome: "",
+    preco: 0,
+    marca: "",
+    modelo: "",
+    quantidade: 1,
+    observacoes: ""
+  });
+  const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
+  const [formaPagamento, setFormaPagamento] = useState("");
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [buscaCliente, setBuscaCliente] = useState("");
+  const [clientesFiltrados, setClientesFiltrados] = useState<Cliente[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [vendaFinalizada, setVendaFinalizada] = useState(false);
+  
+  // Estados para debounce e paginação
+  const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [produtosPaginados, setProdutosPaginados] = useState<ProdutoTiny[]>([]);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [temMaisProdutos, setTemMaisProdutos] = useState(false);
+  const [debounceAtivo, setDebounceAtivo] = useState(false);
+  const ITENS_POR_PAGINA = 15;
+  const [modalAnexarFreteOpen, setModalAnexarFreteOpen] = useState(false);
+
+  const { carrinho, adicionarProduto, setCliente, limparVenda } = useVenda();
+
+  // Steps do wizard
+  const steps = [
+    { id: 1, title: "Buscar Produto", icon: Package },
+    { id: 2, title: "Selecionar Cliente", icon: User },
+    { id: 3, title: "Carrinho", icon: ShoppingCart },
+    { id: 4, title: "Pagamento", icon: CreditCard }
+  ];
+
+  // Carregar clientes na inicialização
+  useEffect(() => {
+    const carregarClientes = async () => {
+      setLoadingClientes(true);
+      try {
+        const clientesData = await buscarClientes();
+        setClientes(clientesData);
+        setClientesFiltrados(clientesData);
+      } catch (error) {
+        console.error("Erro ao carregar clientes:", error);
+      } finally {
+        setLoadingClientes(false);
+      }
+    };
+    carregarClientes();
+  }, []);
+
+  // Limpar timeout quando componente for desmontado
+  useEffect(() => {
+    return () => {
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+    };
+  }, [debounceTimeout]);
+
+  // Buscar produtos na Tiny - CORRIGIDO: Debounce de 1 segundo e busca manual
+  const buscarProdutos = useCallback(async (termo: string) => {
+    if (!termo.trim() || termo.trim().length < 3) {
+      setProdutosEncontrados([]);
+      setProdutosPaginados([]);
+      setPaginaAtual(1);
+      setTemMaisProdutos(false);
+      return;
+    }
+    
+    console.log('🔍 Iniciando busca de produtos:', termo);
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8000/produtos/buscar/?pesquisa=${encodeURIComponent(termo.trim())}`);
+      if (response.ok) {
+        const produtos = await response.json();
+        console.log('✅ Produtos encontrados:', produtos.length);
+        setProdutosEncontrados(produtos);
+        
+        // Paginar resultados
+        const produtosLimitados = produtos.slice(0, ITENS_POR_PAGINA);
+        setProdutosPaginados(produtosLimitados);
+        setTemMaisProdutos(produtos.length > ITENS_POR_PAGINA);
+        setPaginaAtual(1);
+      } else {
+        console.log('❌ Erro na busca de produtos:', response.status);
+        setProdutosEncontrados([]);
+        setProdutosPaginados([]);
+        setTemMaisProdutos(false);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar produtos:", error);
+      setProdutosEncontrados([]);
+      setProdutosPaginados([]);
+      setTemMaisProdutos(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Função com debounce de 1 segundo para busca automática
+  const buscarProdutosComDebounce = useCallback((termo: string) => {
+    // Limpar timeout anterior
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
+
+    // Se menos de 3 caracteres, limpar resultados
+    if (termo.length < 3) {
+      setProdutosEncontrados([]);
+      setProdutosPaginados([]);
+      setTemMaisProdutos(false);
+      setDebounceAtivo(false);
+      return;
+    }
+
+    // Se já está carregando, não fazer nova requisição
+    if (loading) {
+      return;
+    }
+
+    // Ativar indicador de debounce
+    setDebounceAtivo(true);
+
+    // Criar novo timeout de 1 segundo (1000ms)
+    const timeout = setTimeout(() => {
+      console.log('⏰ Debounce executado após 1 segundo de inatividade');
+      setDebounceAtivo(false);
+      buscarProdutos(termo);
+    }, 1000); // 1000ms de debounce
+
+    setDebounceTimeout(timeout);
+  }, [debounceTimeout, loading, buscarProdutos]);
+
+  // Função para busca manual (botão)
+  const buscarProdutosManual = useCallback((termo: string) => {
+    if (termo.length < 3) {
+      return;
+    }
+    
+    // Limpar timeout se existir
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
+    
+    // Desativar indicador de debounce
+    setDebounceAtivo(false);
+    
+    console.log('🔘 Busca manual executada');
+    buscarProdutos(termo);
+  }, [debounceTimeout, buscarProdutos]);
+
+  // Carregar mais produtos
+  const carregarMaisProdutos = () => {
+    if (!temMaisProdutos || loading) return;
+    
+    const inicio = paginaAtual * ITENS_POR_PAGINA;
+    const fim = inicio + ITENS_POR_PAGINA;
+    const novosProdutos = produtosEncontrados.slice(inicio, fim);
+    
+    setProdutosPaginados(prev => [...prev, ...novosProdutos]);
+    setPaginaAtual(prev => prev + 1);
+    setTemMaisProdutos(fim < produtosEncontrados.length);
+  };
+
+  // Filtrar clientes
+  const filtrarClientes = (termo: string) => {
+    setBuscaCliente(termo);
+    if (!termo.trim()) {
+      setClientesFiltrados(clientes);
+    } else {
+      const filtrados = clientes.filter(cliente =>
+        cliente.nome.toLowerCase().includes(termo.toLowerCase()) ||
+        cliente.telefone?.includes(termo) ||
+        cliente.email?.toLowerCase().includes(termo.toLowerCase())
+      );
+      setClientesFiltrados(filtrados);
+    }
+  };
+
+  // Adicionar produto ao carrinho - CORRIGIDO: Função individual por produto
+  const adicionarProdutoAoCarrinho = (produto: ProdutoTiny, qtd: number = 1) => {
+    const item: ItemOrcamento = {
+      id_produto_tiny: produto.id,
+      nome_produto: produto.nome,
+      quantidade: qtd,
+      preco_unitario: produto.preco || 0
+    };
+    
+    adicionarProduto(item);
+    console.log('✅ Produto adicionado ao carrinho:', produto.nome);
+  };
+
+  // Adicionar produto avulso
+  const adicionarProdutoAvulso = () => {
+    if (!produtoAvulso.nome || produtoAvulso.preco <= 0) {
+      alert('Preencha nome e preço do produto');
+      return;
+    }
+
+    const item: ItemOrcamento = {
+      id_produto_tiny: `avulso_${Date.now()}`,
+      nome_produto: produtoAvulso.nome,
+      quantidade: produtoAvulso.quantidade,
+      preco_unitario: produtoAvulso.preco
+    };
+
+    adicionarProduto(item);
+    setStep(3);
+  };
+
+  // Finalizar venda
+  const finalizarVenda = async () => {
+    if (!clienteSelecionado || carrinho.length === 0) {
+      alert('Selecione um cliente e adicione produtos ao carrinho');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const valorTotal = carrinho.reduce((total, item) => total + (item.quantidade * item.preco_unitario), 0);
+      
+      const vendaData = {
+        cliente_id: Number(clienteSelecionado.id),
+        vendedor_id: 1,
+        valor_total: valorTotal,
+        forma_pagamento: formaPagamento,
+        itens: carrinho
+      };
+
+      const response = await fetch('http://localhost:8000/vendas/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(vendaData),
+      });
+
+      if (response.ok) {
+        const venda = await response.json();
+        alert(`Venda #${venda.id} finalizada com sucesso!`);
+        limparVenda();
+        setVendaFinalizada(true);
+      } else {
+        throw new Error('Erro ao finalizar venda');
+      }
+    } catch (error) {
+      console.error('Erro ao finalizar venda:', error);
+      alert('Erro ao finalizar venda. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Gerar PDF
+  const gerarPDF = async (vendaId: number) => {
+    try {
+      const response = await fetch(`http://localhost:8000/vendas/${vendaId}/pdf`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `venda_${vendaId}.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } else {
+        throw new Error('Erro ao gerar PDF');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      alert('Erro ao gerar PDF. Tente novamente.');
+    }
+  };
+
+  // Renderizar step atual - CORRIGIDO: Incluir step 1.5 para produto avulso
+  const renderStep = () => {
+    switch (step) {
+      case 1:
+        return <StepBuscarProduto />;
+      case 1.5:
+        return <StepProdutoAvulso />;
+      case 2:
+        return <StepSelecionarCliente />;
+      case 3:
+        return <StepCarrinho />;
+      case 4:
+        return <StepPagamento />;
+      default:
+        return null;
+    }
+  };
+
+  // Step 1: Buscar Produto - CORRIGIDO: Componente separado para evitar re-render
+  const StepBuscarProduto = () => {
+    console.log('🔄 StepBuscarProduto renderizado - buscaProduto:', buscaProduto);
+    
+    const handleInputChange = (value: string) => {
+      console.log('📝 Input onChange:', value);
+      setBuscaProduto(value);
+      // Apenas debounce automático, sem busca imediata
+      buscarProdutosComDebounce(value);
+    };
+
+    const handleSearch = () => {
+      buscarProdutosManual(buscaProduto);
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && buscaProduto.length >= 3) {
+        buscarProdutosManual(buscaProduto);
+      }
+    };
+    
+    return (
+      <div className="p-6">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            🔍 Buscar Produto
+          </h2>
+          <p className="text-gray-600">
+            Digite o nome da peça para buscar no estoque
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {/* Busca de Produto - CORRIGIDO: Componente separado */}
+          <div className="space-y-4">
+            {/* Campo de busca com debounce e botão manual */}
+            <BuscaProdutoInput
+              value={buscaProduto}
+              onChange={handleInputChange}
+              onSearch={handleSearch}
+              onKeyPress={handleKeyPress}
+              loading={loading}
+              disabled={loading || buscaProduto.length < 3}
+            />
+
+            {/* Botões de ação sempre visíveis */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                onClick={() => setStep(1.5)}
+                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Cadastrar Produto Avulso
+              </button>
+              <button
+                onClick={() => setModalAnexarFreteOpen(true)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Truck className="w-4 h-4" />
+                Anexar Frete a Orçamento
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback de busca - CORRIGIDO: Melhor UX */}
+          {buscaProduto.length > 0 && buscaProduto.length < 3 && (
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-700 flex items-center gap-2">
+                <span>⚠️</span>
+                Digite pelo menos 3 letras para buscar produtos
+              </p>
+            </div>
+          )}
+
+          {/* Indicador de debounce ativo */}
+          {buscaProduto.length >= 3 && debounceAtivo && !loading && produtosPaginados.length === 0 && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-700 flex items-center gap-2">
+                <div className="animate-pulse">⏰</div>
+                Aguardando 1 segundo para buscar automaticamente...
+              </p>
+            </div>
+          )}
+
+          {/* Resultados da Busca - CORRIGIDO: Listagem com botões individuais */}
+          {produtosPaginados.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <h3 className="font-medium text-gray-700">
+                  Produtos Encontrados: {produtosEncontrados.length}
+                </h3>
+                {loading && (
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-sm">Buscando produtos...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Lista de produtos com botões individuais */}
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {produtosPaginados.map((produto) => (
+                  <div
+                    key={produto.id}
+                    className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors"
+                  >
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-800 mb-1">{produto.nome}</h4>
+                        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                          <span>
+                            Estoque: {produto.saldo_fisico || 0} {produto.unidade || "UN"}
+                          </span>
+                          <span className="font-medium text-green-600">
+                            R$ {(produto.preco || 0).toFixed(2)}
+                          </span>
+                          {produto.codigo && (
+                            <span>Código: {produto.codigo}</span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Botão individual para cada produto */}
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => adicionarProdutoAoCarrinho(produto, 1)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm transition-colors"
+                        >
+                          + Carrinho
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Botão para carregar mais produtos */}
+              {temMaisProdutos && (
+                <div className="flex justify-center pt-4">
+                  <button
+                    onClick={carregarMaisProdutos}
+                    disabled={loading}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {loading ? "Carregando..." : "Carregar Mais Produtos"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mensagem quando não há resultados */}
+          {produtosPaginados.length === 0 && buscaProduto && !loading && buscaProduto.length >= 3 && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+              <h3 className="font-medium text-yellow-800 mb-2">
+                ⚠️ Nenhum produto encontrado
+              </h3>
+              <p className="text-yellow-700">
+                Tente outros termos de busca ou cadastre um produto avulso.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Step 1.5: Produto Avulso - CORRIGIDO: Formulário completo
+  const StepProdutoAvulso = () => (
+    <div className="p-6">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-800 mb-2">
+          📝 Criar Produto Avulso
+        </h2>
+        <p className="text-gray-600">
+          Preencha os dados do produto que não foi encontrado
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <h3 className="font-medium text-gray-800 mb-4">Dados do Produto</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Nome da Peça *
+              </label>
+              <input
+                type="text"
+                value={produtoAvulso.nome}
+                onChange={(e) => setProdutoAvulso({...produtoAvulso, nome: e.target.value})}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Ex: Parachoque Dianteiro"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Preço *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={produtoAvulso.preco}
+                onChange={(e) => setProdutoAvulso({...produtoAvulso, preco: Number(e.target.value)})}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Marca
+              </label>
+              <input
+                type="text"
+                value={produtoAvulso.marca}
+                onChange={(e) => setProdutoAvulso({...produtoAvulso, marca: e.target.value})}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Ex: GM, Ford, Fiat"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Modelo
+              </label>
+              <input
+                type="text"
+                value={produtoAvulso.modelo}
+                onChange={(e) => setProdutoAvulso({...produtoAvulso, modelo: e.target.value})}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Ex: Onix, Gol, Uno"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Quantidade
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={produtoAvulso.quantidade}
+                onChange={(e) => setProdutoAvulso({...produtoAvulso, quantidade: Number(e.target.value)})}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Observações
+              </label>
+              <textarea
+                value={produtoAvulso.observacoes}
+                onChange={(e) => setProdutoAvulso({...produtoAvulso, observacoes: e.target.value})}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                rows={3}
+                placeholder="Informações adicionais..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setStep(1)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Voltar
+          </button>
+          <button
+            onClick={adicionarProdutoAvulso}
+            disabled={!produtoAvulso.nome || produtoAvulso.preco <= 0}
+            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            Adicionar ao Carrinho
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Step 2: Selecionar Cliente
+  const StepSelecionarCliente = () => (
+    <div className="p-6">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-800 mb-2">
+          👥 Selecionar Cliente
+        </h2>
+        <p className="text-gray-600">
+          Escolha o cliente para a venda
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {/* Busca de cliente */}
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Buscar cliente por nome, telefone ou email..."
+            value={buscaCliente}
+            onChange={(e) => filtrarClientes(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {loadingClientes && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            </div>
+          )}
+        </div>
+
+        {/* Lista de clientes */}
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {clientesFiltrados.map((cliente) => (
+            <div
+              key={cliente.id}
+                              onClick={() => {
+                  setClienteSelecionado(cliente);
+                  setCliente({
+                    id: cliente.id.toString(),
+                    nome: cliente.nome,
+                    telefone: cliente.telefone,
+                    email: cliente.email
+                  });
+                }}
+              className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                clienteSelecionado?.id === cliente.id
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-medium text-gray-800">{cliente.nome}</h4>
+                  <p className="text-sm text-gray-600">
+                    {cliente.telefone && `📞 ${cliente.telefone}`}
+                    {cliente.email && ` | 📧 ${cliente.email}`}
+                  </p>
+                </div>
+                {clienteSelecionado?.id === cliente.id && (
+                  <Check className="w-5 h-5 text-blue-600" />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setStep(1)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Voltar
+          </button>
+          <button
+            onClick={() => setStep(3)}
+            disabled={!clienteSelecionado}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Step 3: Carrinho
+  const StepCarrinho = () => {
+    const valorTotal = carrinho.reduce((total, item) => total + (item.quantidade * item.preco_unitario), 0);
+    
+    return (
+      <div className="p-6">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            🛒 Carrinho
+          </h2>
+          <p className="text-gray-600">
+            Revise os produtos e continue para o pagamento
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {carrinho.length === 0 ? (
+            <div className="text-center py-8">
+              <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">Carrinho vazio</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3">
+                {carrinho.map((item, index) => (
+                  <div key={index} className="p-4 border border-gray-200 rounded-lg">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-800">{item.nome_produto}</h4>
+                        <p className="text-sm text-gray-600">
+                          Qtd: {item.quantidade} x R$ {item.preco_unitario.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-gray-800">
+                          R$ {(item.quantidade * item.preco_unitario).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Resumo do carrinho */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-blue-800">Total do Carrinho:</span>
+                  <span className="text-xl font-bold text-blue-800">
+                    R$ {valorTotal.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setStep(2)}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Voltar
+            </button>
+            <button
+              onClick={() => setStep(4)}
+              disabled={carrinho.length === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              Continuar
+            </button>
+            {carrinho.length > 0 && (
+              <button
+                onClick={() => {
+                  // Gerar PDF do orçamento atual
+                  const orcamentoData = {
+                    cliente_id: Number(clienteSelecionado?.id || 0),
+                    vendedor_id: 1,
+                    valor_total: valorTotal,
+                    itens: carrinho
+                  };
+                  console.log('Gerando PDF do orçamento:', orcamentoData);
+                  // TODO: Implementar geração de PDF do orçamento
+                  alert('Funcionalidade de PDF será implementada em breve!');
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Gerar PDF
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Step 4: Pagamento - CORRIGIDO: Finalização da venda e PDF
+  const StepPagamento = () => {
+    const valorTotal = carrinho.reduce((total, item) => total + (item.quantidade * item.preco_unitario), 0);
+    
+    return (
+      <div className="p-6">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            💳 Pagamento
+          </h2>
+          <p className="text-gray-600">
+            Escolha a forma de pagamento
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {["PIX", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"].map((forma) => (
+              <button
+                key={forma}
+                onClick={() => setFormaPagamento(forma)}
+                className={`p-4 border rounded-lg text-center transition-colors ${
+                  formaPagamento === forma
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                {forma}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-medium text-gray-800 mb-2">Resumo da Venda</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span>R$ {valorTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Total:</span>
+                <span>R$ {valorTotal.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setStep(3)}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Voltar
+            </button>
+            <button
+              onClick={finalizarVenda}
+              disabled={!formaPagamento || carrinho.length === 0 || !clienteSelecionado}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              Finalizar Venda
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div>
+        {/* Header com steps */}
+        <div className="bg-gray-50 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              {steps.map((stepItem, index) => (
+                <div key={stepItem.id} className="flex items-center">
+                  <div
+                    className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                      step >= stepItem.id
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 text-gray-600"
+                    }`}
+                  >
+                    {step > stepItem.id ? (
+                      <Check className="w-4 h-4" />
+                    ) : (
+                      stepItem.id
+                    )}
+                  </div>
+                  <span
+                    className={`ml-2 text-sm font-medium ${
+                      step >= stepItem.id ? "text-blue-600" : "text-gray-500"
+                    }`}
+                  >
+                    {stepItem.title}
+                  </span>
+                  {index < steps.length - 1 && (
+                    <ChevronRight className="w-4 h-4 text-gray-400 mx-2" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Conteúdo do step */}
+        {renderStep()}
+      </div>
+
+      {/* Modal Anexar Frete */}
+      <AnexarFreteModal
+        isOpen={modalAnexarFreteOpen}
+        onClose={() => setModalAnexarFreteOpen(false)}
+      />
+    </>
+  );
+};
+
+export default VendaWizard; 

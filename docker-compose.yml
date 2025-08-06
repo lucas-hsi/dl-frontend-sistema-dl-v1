@@ -1,0 +1,76 @@
+# docker-compose.yml - Versão 1.1 para DL_SISTEMA (Corrigido)
+
+services:
+  # Serviço do Banco de Dados PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: dl_db
+    env_file:
+      - ./.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    networks:
+      - dl_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Serviço do Backend FastAPI
+  backend:
+    container_name: dl_backend
+    build:
+      context: ./dl-backend
+      dockerfile: Dockerfile
+    # --- CORREÇÃO APLICADA AQUI ---
+    ports:
+      - "8001:8000" # Mapeia a porta 8001 da sua máquina para a porta 8000 do contêiner
+    # -----------------------------
+    env_file:
+      - ./.env
+    volumes: # Sincroniza seus arquivos locais com o contêiner
+      - ./dl-backend:/app
+    depends_on:
+      db:
+        condition: service_healthy # Só sobe o backend depois que o banco estiver saudável
+    networks:
+      - dl_network
+
+  # Serviço do Frontend Next.js
+  frontend:
+    container_name: dl_frontend
+    build:
+      context: ./dl-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+    env_file:
+      - ./.env
+    depends_on:
+      - backend
+    networks:
+      - dl_network
+
+  # Serviço do Nginx (Proxy Reverso)
+  nginx:
+    container_name: dl_nginx
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - dl_network
+
+networks:
+  dl_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

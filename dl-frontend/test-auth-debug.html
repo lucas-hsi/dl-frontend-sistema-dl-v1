@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Autenticação - Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-warning { background-color: #ffc107; color: black; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste de Autenticação - Debug</h1>
+    
+    <div class="debug-section info">
+        <h3>📊 Estado Atual do localStorage</h3>
+        <div id="localStorageStatus"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h3>🎯 Ações de Teste</h3>
+        <button class="btn-primary" onclick="testLogin('vendedor')">Login Vendedor</button>
+        <button class="btn-success" onclick="testLogin('gestor')">Login Gestor</button>
+        <button class="btn-warning" onclick="testLogin('anuncios')">Login Anúncios</button>
+        <button class="btn-danger" onclick="clearAll()">Limpar Tudo</button>
+        <button onclick="refreshStatus()">🔄 Atualizar Status</button>
+    </div>
+    
+    <div class="debug-section">
+        <h3>🔧 Testes Específicos</h3>
+        <button onclick="testMigration()">Testar Migração</button>
+        <button onclick="testAuthContext()">Simular AuthContext</button>
+        <button onclick="testProtectedRoute()">Simular ProtectedRoute</button>
+    </div>
+    
+    <div class="debug-section">
+        <h3>📝 Logs de Debug</h3>
+        <div id="debugLogs"></div>
+    </div>
+
+    <script>
+        function log(message) {
+            const logs = document.getElementById('debugLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            console.log(message);
+        }
+
+        function refreshStatus() {
+            const status = document.getElementById('localStorageStatus');
+            const data = {
+                'dl.auth.token': localStorage.getItem('dl.auth.token'),
+                'dl.auth.user': localStorage.getItem('dl.auth.user'),
+                'auth_token': localStorage.getItem('auth_token'),
+                'perfil_autenticado': localStorage.getItem('perfil_autenticado'),
+                'user': localStorage.getItem('user')
+            };
+            
+            status.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            log('Status atualizado');
+        }
+
+        function testLogin(profile) {
+            log(`🔐 Testando login para: ${profile}`);
+            
+            const token = 'token_' + Date.now();
+            const userData = {
+                id: 1,
+                nome: profile.charAt(0).toUpperCase() + profile.slice(1),
+                email: `${profile}@dl.com`,
+                perfil: profile.toUpperCase(),
+                role: profile.toUpperCase(),
+                permissoes: []
+            };
+            
+            // Salvar no formato novo
+            localStorage.setItem('dl.auth.token', token);
+            localStorage.setItem('dl.auth.user', JSON.stringify(userData));
+            
+            // Manter compatibilidade
+            localStorage.setItem('auth_token', token);
+            localStorage.setItem('perfil_autenticado', profile);
+            localStorage.setItem('user', JSON.stringify(userData));
+            
+            log(`✅ Login simulado para ${profile}`);
+            refreshStatus();
+        }
+
+        function clearAll() {
+            localStorage.clear();
+            log('🗑️ localStorage limpo');
+            refreshStatus();
+        }
+
+        function testMigration() {
+            log('🔄 Testando migração...');
+            
+            // Simular dados legados
+            localStorage.setItem('auth_token', 'legacy_token_123');
+            localStorage.setItem('perfil_autenticado', 'anuncios');
+            localStorage.setItem('user', JSON.stringify({
+                id: 1,
+                nome: 'Anuncios',
+                email: 'anuncios@dl.com'
+            }));
+            
+            log('📦 Dados legados criados');
+            refreshStatus();
+        }
+
+        function testAuthContext() {
+            log('🧠 Simulando AuthContext...');
+            
+            // Simular a função getStorage do AuthContext
+            const rawToken = localStorage.getItem('dl.auth.token');
+            const rawUser = localStorage.getItem('dl.auth.user');
+            
+            if (!rawToken && !rawUser) {
+                const legacyToken = localStorage.getItem('auth_token');
+                const legacyUser = localStorage.getItem('user');
+                const legacyPerfil = localStorage.getItem('perfil_autenticado');
+                
+                if (legacyToken && legacyUser && legacyPerfil) {
+                    log('🔄 Migrando dados legados...');
+                    
+                    try {
+                        const userData = JSON.parse(legacyUser);
+                        const migratedUser = {
+                            id: userData.id || 1,
+                            email: userData.email || `${legacyPerfil}@dl.com`,
+                            nome: userData.nome || legacyPerfil.charAt(0).toUpperCase() + legacyPerfil.slice(1),
+                            perfil: legacyPerfil.toUpperCase(),
+                            role: legacyPerfil.toUpperCase(),
+                            permissoes: userData.permissoes || []
+                        };
+                        
+                        localStorage.setItem('dl.auth.token', legacyToken);
+                        localStorage.setItem('dl.auth.user', JSON.stringify(migratedUser));
+                        
+                        log('✅ Migração concluída');
+                    } catch (error) {
+                        log(`❌ Erro na migração: ${error.message}`);
+                    }
+                }
+            }
+            
+            refreshStatus();
+        }
+
+        function testProtectedRoute() {
+            log('🛡️ Simulando ProtectedRoute...');
+            
+            const token = localStorage.getItem('dl.auth.token');
+            const user = localStorage.getItem('dl.auth.user');
+            
+            if (!token || !user) {
+                log('❌ Usuário não autenticado - redirecionaria para /login');
+            } else {
+                try {
+                    const userData = JSON.parse(user);
+                    log(`✅ Usuário autenticado: ${userData.nome} (${userData.perfil})`);
+                    
+                    // Simular verificação de permissões
+                    const allowedRoles = ['ANUNCIANTE', 'ANUNCIOS'];
+                    const userRole = userData.perfil;
+                    
+                    if (allowedRoles.includes(userRole)) {
+                        log('✅ Permissão concedida');
+                    } else {
+                        log('❌ Sem permissão - redirecionaria para /');
+                    }
+                } catch (error) {
+                    log(`❌ Erro ao verificar permissões: ${error.message}`);
+                }
+            }
+        }
+
+        // Inicializar
+        refreshStatus();
+        log('🚀 Página de teste carregada');
+    </script>
+</body>
+</html> 

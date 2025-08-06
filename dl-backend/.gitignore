@@ -1,0 +1,29 @@
+﻿# Python caches
+**/__pycache__/
+**/*.pyc
+
+# Testing & lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build/dist
+dist/
+build/
+
+# Coverage
+.coverage
+coverage.xml
+
+# Logs
+logs/
+
+# VSCode/IDE
+.vscode/
+.idea/
+
+# SQLite DB
+app.db
+
+# Artifacts e auditoria
+artifacts/
