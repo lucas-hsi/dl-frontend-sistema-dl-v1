@@ -105,6 +105,45 @@ export default function SidebarGestor({ onExpandChange }: SidebarGestorProps) {
     setMounted(true);
   }, []);
 
+  // --- 4.4. ORDENAÇÃO DO MENU (T1) ---
+  // Regras:
+  // - Ordenar alfabeticamente (case-insensitive) todos os itens de menu
+  // - Manter "Dashboard" sempre primeiro
+  // - Manter "Configurações" sempre último
+  // - Preservar grupos/ícones atuais; apenas reordenar a lista
+  // IMPORTANTE: hooks não podem ser condicionais; definimos antes de qualquer return condicional
+  const sortedMenuItems = React.useMemo(() => {
+    const localeCompareOptions: Intl.CollatorOptions = { sensitivity: 'base' };
+
+    // Clonar e ordenar submenus de cada item (se houver)
+    const withSortedSubmenus = menuItems.map((item) => {
+      if (item.submenu && Array.isArray(item.submenu)) {
+        const sortedSubmenu = [...item.submenu].sort((a, b) =>
+          a.label.localeCompare(b.label, 'pt-BR', localeCompareOptions)
+        );
+        return { ...item, submenu: sortedSubmenu };
+      }
+      return item;
+    });
+
+    // Extrair especiais e ordenar o restante
+    const dashboardItem = withSortedSubmenus.find((i) => i.id === 'dashboard');
+    const configItem = withSortedSubmenus.find((i) => i.id === 'configuracoes');
+    const middleItems = withSortedSubmenus.filter(
+      (i) => i.id !== 'dashboard' && i.id !== 'configuracoes'
+    );
+
+    middleItems.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', localeCompareOptions));
+
+    const result = [
+      ...(dashboardItem ? [dashboardItem] : []),
+      ...middleItems,
+      ...(configItem ? [configItem] : []),
+    ];
+
+    return result;
+  }, []);
+
   // --- 4.4. FUNÇÕES DE MANIPULAÇÃO DE EVENTOS (Event Handlers) ---
 
   // Alterna o estado de expandido/recolhido da sidebar.
@@ -145,44 +184,6 @@ export default function SidebarGestor({ onExpandChange }: SidebarGestorProps) {
   if (!mounted) {
     return null;
   }
-
-  // --- 4.7. ORDENAÇÃO DO MENU (T1) ---
-  // Regras:
-  // - Ordenar alfabeticamente (case-insensitive) todos os itens de menu
-  // - Manter "Dashboard" sempre primeiro
-  // - Manter "Configurações" sempre último
-  // - Preservar grupos/ícones atuais; apenas reordenar a lista
-  const sortedMenuItems = React.useMemo(() => {
-    const localeCompareOptions: Intl.CollatorOptions = { sensitivity: 'base' };
-
-    // Clonar e ordenar submenus de cada item (se houver)
-    const withSortedSubmenus = menuItems.map((item) => {
-      if (item.submenu && Array.isArray(item.submenu)) {
-        const sortedSubmenu = [...item.submenu].sort((a, b) =>
-          a.label.localeCompare(b.label, 'pt-BR', localeCompareOptions)
-        );
-        return { ...item, submenu: sortedSubmenu };
-      }
-      return item;
-    });
-
-    // Extrair especiais e ordenar o restante
-    const dashboardItem = withSortedSubmenus.find((i) => i.id === 'dashboard');
-    const configItem = withSortedSubmenus.find((i) => i.id === 'configuracoes');
-    const middleItems = withSortedSubmenus.filter(
-      (i) => i.id !== 'dashboard' && i.id !== 'configuracoes'
-    );
-
-    middleItems.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', localeCompareOptions));
-
-    const result = [
-      ...(dashboardItem ? [dashboardItem] : []),
-      ...middleItems,
-      ...(configItem ? [configItem] : []),
-    ];
-
-    return result;
-  }, []);
 
   // --- 4.8. JSX (A ESTRUTURA DA UI) ---
   return (
