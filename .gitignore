@@ -99,4 +99,4 @@ nginx/logs/
 nginx/cache/
 
 # ===== PACKAGE LOCK (ROOT) =====
-package-lock.json 
+package-lock.json dl-frontend/.env.backup 
