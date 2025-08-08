@@ -17,6 +17,7 @@ import {
 import LayoutGestor from "@/components/layout/LayoutGestor";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
+import { sucatasService } from "@/services/sucatasService";
 
 interface Sucata {
   id: string;
@@ -43,33 +44,32 @@ export default function EntradaSucata() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [skuGerado, setSkuGerado] = useState("");
 
-  // Lista de sucatas cadastradas (mock)
-  const [sucatasCadastradas, setSucatasCadastradas] = useState<Sucata[]>([
-    {
-      id: "1",
-      sku_mestre: "SC-4B32-241025-0001",
-      data_entrada: "2024-10-25",
-      valor_pago: 2500,
-      identificador_veiculo: "Honda Civic 2018 - ABC4B32",
-      observacoes: "Veículo com motor funcionando, lataria danificada",
-      created_at: "2024-10-25T08:30:00"
-    },
-    {
-      id: "2", 
-      sku_mestre: "SC-7Y89-241020-0002",
-      data_entrada: "2024-10-20",
-      valor_pago: 1800,
-      identificador_veiculo: "Toyota Corolla 2016 - XYZ7Y89",
-      observacoes: "Veículo sinistrado, peças em bom estado",
-      created_at: "2024-10-20T14:15:00"
-    }
-  ]);
+  // Lista de sucatas cadastradas (dados reais)
+  const [sucatasCadastradas, setSucatasCadastradas] = useState<Sucata[]>([]);
 
   useEffect(() => {
     setMounted(true);
-    // Definir data atual como padrão
     const hoje = new Date().toISOString().split('T')[0];
     setDataEntrada(hoje);
+    // Carregar sucatas reais
+    (async () => {
+      try {
+        const data = await sucatasService.listarSucatas();
+        setSucatasCadastradas(
+          data.map((s) => ({
+            id: s.id,
+            sku_mestre: s.sku_mestre,
+            data_entrada: s.data_entrada,
+            valor_pago: s.valor_pago,
+            identificador_veiculo: s.identificador_veiculo,
+            observacoes: s.observacoes || "",
+            created_at: s.data_entrada,
+          }))
+        );
+      } catch (e) {
+        console.error('Erro ao carregar sucatas:', e);
+      }
+    })();
   }, []);
 
   // Proteção de acesso
@@ -99,37 +99,35 @@ export default function EntradaSucata() {
     }
   };
 
-  // Submissão do formulário
+  // Submissão do formulário (dados reais)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // Gerar SKU mestre
-      const sku = gerarSkuMestre(identificadorVeiculo, dataEntrada);
-      setSkuGerado(sku);
-
-      // Simular cadastro (aqui seria a integração com o backend)
-      const novaSucata: Sucata = {
-        id: String(sucatasCadastradas.length + 1),
-        sku_mestre: sku,
+      // Enviar para backend
+      const criada = await sucatasService.criarEntrada({
         data_entrada: dataEntrada,
         valor_pago: parseFloat(valorPago),
         identificador_veiculo: identificadorVeiculo,
-        observacoes: observacoes,
-        nota_fiscal: notaFiscal || undefined,
-        created_at: new Date().toISOString()
-      };
-
-      // Adicionar à lista
-      setSucatasCadastradas(prev => [novaSucata, ...prev]);
-
-      // Simular notificação ao painel de anúncios
-      console.log('🔔 Notificação enviada ao Painel de Anúncios:', {
-        action: 'nova_sucata_cadastrada',
-        sku_mestre: sku,
-        valor_pago: parseFloat(valorPago)
+        observacoes,
+        nota_fiscal: notaFiscal,
+        // sku opcional: backend pode gerar
       });
+
+      setSkuGerado(criada.sku_mestre);
+      setSucatasCadastradas(prev => [
+        {
+          id: criada.id,
+          sku_mestre: criada.sku_mestre,
+          data_entrada: criada.data_entrada,
+          valor_pago: criada.valor_pago,
+          identificador_veiculo: criada.identificador_veiculo,
+          observacoes: criada.observacoes || "",
+          created_at: criada.data_entrada,
+        },
+        ...prev,
+      ]);
 
       // Mostrar sucesso
       setShowSuccess(true);
