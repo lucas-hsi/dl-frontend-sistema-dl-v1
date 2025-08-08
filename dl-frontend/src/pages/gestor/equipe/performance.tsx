@@ -14,10 +14,12 @@ import {
     Users,
     XCircle
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { anunciantesService, Advertiser } from "@/services/anunciantesService";
+import Link from "next/link";
 
 interface PerformanceData {
-    id: number;
+    id: number | string;
     nome: string;
     cargo: string;
     vendas: number;
@@ -45,73 +47,92 @@ export default function PerformancePage() {
     const [loading, setLoading] = useState(true);
     const [periodo, setPeriodo] = useState("mes");
     const [viewMode, setViewMode] = useState<"individual" | "equipe">("individual");
+    const [exportando, setExportando] = useState(false);
 
-    // Mock data
-    useEffect(() => {
-        setTimeout(() => {
-            setPerformanceData([
-                {
-                    id: 1,
-                    nome: "João Silva",
-                    cargo: "Vendedor Senior",
-                    vendas: 45,
-                    valorVendas: 12500.00,
-                    anunciosAtivos: 12,
-                    taxaConversao: 8.5,
-                    visualizacoes: 1250,
-                    leads: 38,
-                    periodo: "março/2024"
-                },
-                {
-                    id: 2,
-                    nome: "Maria Santos",
-                    cargo: "Anunciante",
-                    vendas: 32,
-                    valorVendas: 8900.00,
-                    anunciosAtivos: 8,
-                    taxaConversao: 6.2,
-                    visualizacoes: 890,
-                    leads: 25,
-                    periodo: "março/2024"
-                },
-                {
-                    id: 3,
-                    nome: "Pedro Costa",
-                    cargo: "Vendedor",
-                    vendas: 28,
-                    valorVendas: 7200.00,
-                    anunciosAtivos: 6,
-                    taxaConversao: 5.8,
-                    visualizacoes: 650,
-                    leads: 22,
-                    periodo: "março/2024"
-                },
-                {
-                    id: 4,
-                    nome: "Ana Oliveira",
-                    cargo: "Anunciante",
-                    vendas: 18,
-                    valorVendas: 4800.00,
-                    anunciosAtivos: 4,
-                    taxaConversao: 4.1,
-                    visualizacoes: 420,
-                    leads: 15,
-                    periodo: "março/2024"
-                }
-            ]);
+    // Drawer Detalhes
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [membroSelecionado, setMembroSelecionado] = useState<PerformanceData | null>(null);
+    const [detalhesLoading, setDetalhesLoading] = useState(false);
+    const [detalhes, setDetalhes] = useState<{
+        vendas: number;
+        valorVendas: number;
+        taxaConversao: number;
+        anunciosAtivos: number;
+        visualizacoes: number;
+        leads: number;
+        periodo: string;
+    } | null>(null);
+
+    const mapPeriodo = (p: string): "hoje" | "7d" | "15d" | "mes" => {
+        if (p === "semana") return "7d";
+        if (p === "trimestre") return "15d";
+        if (p === "mes") return "mes";
+        if (p === "ano") return "mes";
+        return "mes";
+    };
+
+    const carregarDados = async () => {
+        try {
+            setLoading(true);
+            const lista = await anunciantesService.list({ page: 1, page_size: 20, sort: "-created_at" });
+            const advs: Advertiser[] = lista.data || [];
+            const kpisList = await Promise.all(
+                advs.map(async (a) => {
+                    try {
+                        const k = await anunciantesService.kpis(a.id, mapPeriodo(periodo));
+                        return { a, k } as const;
+                    } catch {
+                        return { a, k: null as any } as const;
+                    }
+                })
+            );
+
+            const perf: PerformanceData[] = kpisList.map(({ a, k }) => ({
+                id: a.id,
+                nome: a.nome_publico || (typeof a.id === 'string' ? a.id.slice(0, 8) : String(a.id)),
+                cargo: "Anunciante",
+                vendas: k?.vendas_atribuidas ?? 0,
+                valorVendas: 0,
+                anunciosAtivos: k?.anuncios_ativos ?? 0,
+                taxaConversao: k?.ctr ?? 0,
+                visualizacoes: 0,
+                leads: 0,
+                periodo: k ? `${new Date(k.periodo_inicio).toLocaleDateString('pt-BR')} - ${new Date(k.periodo_fim).toLocaleDateString('pt-BR')}` : "",
+            }));
+
+            setPerformanceData(perf);
+
+            const totalVendas = perf.reduce((acc, p) => acc + (p.vendas || 0), 0);
+            const totalValor = perf.reduce((acc, p) => acc + (p.valorVendas || 0), 0);
+            const totalAnuncios = perf.reduce((acc, p) => acc + (p.anunciosAtivos || 0), 0);
+            const mediaConversao = perf.length ? (perf.reduce((acc, p) => acc + (p.taxaConversao || 0), 0) / perf.length) : 0;
+            const melhor = perf.slice().sort((a, b) => (b.taxaConversao || 0) - (a.taxaConversao || 0))[0]?.nome || "";
+            const pior = perf.slice().sort((a, b) => (a.taxaConversao || 0) - (b.taxaConversao || 0))[0]?.nome || "";
 
             setMetricasGerais({
-                totalVendas: 123,
-                totalValor: 33400.00,
-                totalAnuncios: 30,
-                mediaConversao: 6.15,
-                melhorVendedor: "João Silva",
-                piorVendedor: "Ana Oliveira"
+                totalVendas,
+                totalValor,
+                totalAnuncios,
+                mediaConversao,
+                melhorVendedor: melhor,
+                piorVendedor: pior,
             });
-
+        } finally {
             setLoading(false);
-        }, 1000);
-    }, []);
+        }
+    };
+
+    useEffect(() => {
+        carregarDados();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [periodo]);
+
+    const periodoLabel = useMemo(() => {
+        if (periodo === "semana") return "Última semana";
+        if (periodo === "trimestre") return "Último trimestre";
+        if (periodo === "ano") return "Último ano";
+        return "Último mês";
+    }, [periodo]);
 
     const getPerformanceColor = (taxa: number) => {
         if (taxa >= 8) return 'text-green-600';
@@ -203,13 +224,91 @@ export default function PerformancePage() {
                                 </select>
                             </div>
                             <div className="flex items-center gap-2">
-                                <button className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:shadow-lg transition-all duration-200">
+                                <button
+                                    onClick={carregarDados}
+                                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:shadow-lg transition-all duration-200"
+                                >
                                     <RefreshCw size={20} />
                                     Atualizar
                                 </button>
-                                <button className="bg-green-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:shadow-lg transition-all duration-200">
+                                <button
+                                    onClick={async () => {
+                                        if (exportando) return;
+                                        try {
+                                            setExportando(true);
+                                            // Import dinâmico para evitar SSR issues
+                                            const jsPDF = (await import("jspdf")).default;
+                                            const doc = new jsPDF({ unit: "pt", format: "a4" });
+
+                                            const margin = 32;
+                                            let y = margin;
+
+                                            doc.setFont("helvetica", "bold");
+                                            doc.setFontSize(16);
+                                            doc.text("Performance da Equipe", margin, y);
+                                            y += 18;
+                                            doc.setFont("helvetica", "normal");
+                                            doc.setFontSize(11);
+                                            doc.text(`Período: ${periodoLabel}`, margin, y);
+                                            y += 20;
+
+                                            // Métricas gerais
+                                            const gerais = [
+                                                `Total Vendas: ${metricasGerais?.totalVendas ?? 0}`,
+                                                `Valor Total: R$ ${(metricasGerais?.totalValor ?? 0).toLocaleString("pt-BR")}`,
+                                                `Média Conversão: ${(metricasGerais?.mediaConversao ?? 0).toFixed(1)}%`,
+                                                `Total Anúncios: ${metricasGerais?.totalAnuncios ?? 0}`,
+                                            ];
+                                            gerais.forEach((t) => {
+                                                doc.text(t, margin, y);
+                                                y += 14;
+                                            });
+
+                                            y += 6;
+                                            // Cabeçalho da tabela
+                                            doc.setFont("helvetica", "bold");
+                                            doc.text("Nome", margin, y);
+                                            doc.text("Vendas", margin + 220, y);
+                                            doc.text("Valor", margin + 290, y);
+                                            doc.text("Conversão", margin + 380, y);
+                                            doc.text("Anúncios", margin + 470, y);
+                                            doc.text("Vis.", margin + 550, y);
+                                            doc.text("Leads", margin + 590, y);
+                                            y += 10;
+                                            doc.setLineWidth(0.5);
+                                            doc.line(margin, y, 595 - margin, y);
+                                            y += 14;
+                                            doc.setFont("helvetica", "normal");
+
+                                            // Linhas
+                                            performanceData.forEach((m) => {
+                                                if (y > 800) {
+                                                    doc.addPage();
+                                                    y = margin;
+                                                }
+                                                doc.text(String(m.nome ?? "-"), margin, y, { maxWidth: 200 });
+                                                doc.text(String(m.vendas ?? 0), margin + 220, y);
+                                                doc.text(`R$ ${Number(m.valorVendas ?? 0).toLocaleString("pt-BR")}`, margin + 290, y);
+                                                doc.text(`${Number(m.taxaConversao ?? 0)}%`, margin + 380, y);
+                                                doc.text(String(m.anunciosAtivos ?? 0), margin + 470, y);
+                                                doc.text(String(m.visualizacoes ?? 0), margin + 550, y);
+                                                doc.text(String(m.leads ?? 0), margin + 590, y);
+                                                y += 16;
+                                            });
+
+                                            doc.save("performance-equipe.pdf");
+                                        } catch (err) {
+                                            // Evitar qualquer warning na UI
+                                            // console.error("Erro ao exportar PDF", err);
+                                        } finally {
+                                            setExportando(false);
+                                        }
+                                    }}
+                                    className="bg-green-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                                    disabled={exportando}
+                                >
                                     <Download size={20} />
-                                    Exportar
+                                    {exportando ? "Exportando..." : "Exportar"}
                                 </button>
                             </div>
                         </div>
@@ -288,7 +387,40 @@ export default function PerformancePage() {
                                     <div className="mt-4 pt-4 border-t border-gray-100">
                                         <div className="flex items-center justify-between">
                                             <span className="text-xs text-gray-500">Período: {membro.periodo}</span>
-                                            <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                            <button
+                                                onClick={async () => {
+                                                    setMembroSelecionado(membro);
+                                                    setDrawerOpen(true);
+                                                    setDetalhes(null);
+                                                    setDetalhesLoading(true);
+                                                    try {
+                                                        // Último mês por padrão
+                                                        const k = await anunciantesService.kpis(String(membro.id), "mes");
+                                                        setDetalhes({
+                                                            vendas: k?.vendas_atribuidas ?? membro.vendas ?? 0,
+                                                            valorVendas: 0,
+                                                            taxaConversao: k?.ctr ?? membro.taxaConversao ?? 0,
+                                                            anunciosAtivos: k?.anuncios_ativos ?? membro.anunciosAtivos ?? 0,
+                                                            visualizacoes: 0,
+                                                            leads: 0,
+                                                            periodo: k ? `${new Date(k.periodo_inicio).toLocaleDateString('pt-BR')} - ${new Date(k.periodo_fim).toLocaleDateString('pt-BR')}` : membro.periodo,
+                                                        });
+                                                    } catch (_err) {
+                                                        setDetalhes({
+                                                            vendas: membro.vendas ?? 0,
+                                                            valorVendas: membro.valorVendas ?? 0,
+                                                            taxaConversao: membro.taxaConversao ?? 0,
+                                                            anunciosAtivos: membro.anunciosAtivos ?? 0,
+                                                            visualizacoes: membro.visualizacoes ?? 0,
+                                                            leads: membro.leads ?? 0,
+                                                            periodo: membro.periodo ?? "",
+                                                        });
+                                                    } finally {
+                                                        setDetalhesLoading(false);
+                                                    }
+                                                }}
+                                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                            >
                                                 Ver detalhes
                                             </button>
                                         </div>
@@ -355,6 +487,81 @@ export default function PerformancePage() {
                         </div>
                     </motion.div>
                 </div>
+                {/* Drawer Lateral - Detalhes do Membro */}
+                {drawerOpen && (
+                    <div className="fixed inset-0 z-50 flex">
+                        {/* Overlay */}
+                        <div
+                            className="fixed inset-0 bg-black bg-opacity-30 transition-opacity"
+                            onClick={() => setDrawerOpen(false)}
+                            aria-label="Fechar drawer"
+                        />
+                        {/* Drawer */}
+                        <div className="relative ml-auto w-full max-w-xl h-full bg-white shadow-xl animate-slide-in-right overflow-y-auto">
+                            <button
+                                className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl font-bold"
+                                onClick={() => setDrawerOpen(false)}
+                                aria-label="Fechar"
+                            >
+                                ×
+                            </button>
+                            <div className="p-6 pt-10">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                        <User size={24} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-semibold text-gray-900">{membroSelecionado?.nome}</h2>
+                                        <p className="text-sm text-gray-500">{membroSelecionado?.cargo}</p>
+                                    </div>
+                                </div>
+                                <div className="text-sm text-gray-500 mb-4">Período: {detalhes?.periodo || "Último mês"}</div>
+
+                                {detalhesLoading ? (
+                                    <div className="space-y-3">
+                                        <div className="h-4 bg-gray-200 rounded" />
+                                        <div className="h-4 bg-gray-200 rounded" />
+                                        <div className="h-4 bg-gray-200 rounded" />
+                                        <div className="h-4 bg-gray-200 rounded" />
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-gray-50 rounded-xl p-4">
+                                            <div className="text-xs text-gray-500">Vendas</div>
+                                            <div className="text-2xl font-bold text-blue-600">{detalhes?.vendas ?? 0}</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-xl p-4">
+                                            <div className="text-xs text-gray-500">Valor</div>
+                                            <div className="text-2xl font-bold text-green-600">R$ {(detalhes?.valorVendas ?? 0).toLocaleString('pt-BR')}</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-xl p-4">
+                                            <div className="text-xs text-gray-500">Taxa de Conversão</div>
+                                            <div className="text-2xl font-bold text-gray-900">{(detalhes?.taxaConversao ?? 0)}%</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-xl p-4">
+                                            <div className="text-xs text-gray-500">Anúncios Ativos</div>
+                                            <div className="text-2xl font-bold text-gray-900">{detalhes?.anunciosAtivos ?? 0}</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-xl p-4">
+                                            <div className="text-xs text-gray-500">Visualizações</div>
+                                            <div className="text-2xl font-bold text-gray-900">{detalhes?.visualizacoes ?? 0}</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-xl p-4">
+                                            <div className="text-xs text-gray-500">Leads</div>
+                                            <div className="text-2xl font-bold text-gray-900">{detalhes?.leads ?? 0}</div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mt-6 flex justify-end">
+                                    <Link href="/gestor/gestao/vendas" className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                        ver relatório completo →
+                                    </Link>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </LayoutGestor>
         </PermissionGuard>
     );
