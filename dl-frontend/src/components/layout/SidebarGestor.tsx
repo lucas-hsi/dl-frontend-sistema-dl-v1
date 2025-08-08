@@ -57,28 +57,12 @@ const menuItems = [
       { label: "Fornecedores", href: "/gestor/produtos/fornecedores", icon: Users },
     ],
   },
-  {
-    id: "vendas",
-    label: "Vendas & Relatórios",
-    icon: DollarSign,
-    submenu: [
-      { label: "Por Canal", href: "/gestor/vendas/canal", icon: BarChart3 },
-      { label: "Por Vendedor", href: "/gestor/vendas/vendedor", icon: UserCheck },
-      { label: "Por Período", href: "/gestor/vendas/periodo", icon: Calendar },
-      { label: "Reembolsos", href: "/gestor/vendas/reembolsos", icon: RefreshCw },
-      { label: "Relatórios de Frete", href: "/gestor/relatorios-frete", icon: Truck },
-    ],
-  },
+  { id: "gestao-vendas", label: "Gestão de Vendas", icon: TrendingUp, href: "/gestor/gestao/vendas" },
   {
     id: "relatorios",
     label: "Relatórios & Analytics",
     icon: BarChart3,
-    submenu: [
-      { label: "Performance por Canal", href: "/gestor/relatorios/performance-por-canal", icon: BarChart3 },
-      { label: "Produtos Top Vendas", href: "/gestor/relatorios/produtos-top-vendas", icon: TrendingUp },
-      { label: "Análise de Preços", href: "/gestor/relatorios/analise-de-precos", icon: DollarSign },
-      { label: "ROI por Anúncio", href: "/gestor/relatorios/roi-por-anuncio", icon: Activity },
-    ],
+    href: "/gestor/relatorios-analytics",
   },
   {
     id: "equipe",
@@ -95,10 +79,7 @@ const menuItems = [
     id: "atendimento",
     label: "Atendimento",
     icon: MessageSquare,
-    submenu: [
-      { label: "Dashboard", href: "/gestor/atendimento", icon: MessageSquare },
-      { label: "Configuração Frete", href: "/gestor/configuracao-frete", icon: Settings },
-    ],
+    href: "/gestor/atendimento",
   },
   { id: "configuracoes", label: "Configurações", icon: Settings, href: "/gestor/configuracoes" },
 ];
@@ -165,7 +146,45 @@ export default function SidebarGestor({ onExpandChange }: SidebarGestorProps) {
     return null;
   }
 
-  // --- 4.7. JSX (A ESTRUTURA DA UI) ---
+  // --- 4.7. ORDENAÇÃO DO MENU (T1) ---
+  // Regras:
+  // - Ordenar alfabeticamente (case-insensitive) todos os itens de menu
+  // - Manter "Dashboard" sempre primeiro
+  // - Manter "Configurações" sempre último
+  // - Preservar grupos/ícones atuais; apenas reordenar a lista
+  const sortedMenuItems = React.useMemo(() => {
+    const localeCompareOptions: Intl.CollatorOptions = { sensitivity: 'base' };
+
+    // Clonar e ordenar submenus de cada item (se houver)
+    const withSortedSubmenus = menuItems.map((item) => {
+      if (item.submenu && Array.isArray(item.submenu)) {
+        const sortedSubmenu = [...item.submenu].sort((a, b) =>
+          a.label.localeCompare(b.label, 'pt-BR', localeCompareOptions)
+        );
+        return { ...item, submenu: sortedSubmenu };
+      }
+      return item;
+    });
+
+    // Extrair especiais e ordenar o restante
+    const dashboardItem = withSortedSubmenus.find((i) => i.id === 'dashboard');
+    const configItem = withSortedSubmenus.find((i) => i.id === 'configuracoes');
+    const middleItems = withSortedSubmenus.filter(
+      (i) => i.id !== 'dashboard' && i.id !== 'configuracoes'
+    );
+
+    middleItems.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', localeCompareOptions));
+
+    const result = [
+      ...(dashboardItem ? [dashboardItem] : []),
+      ...middleItems,
+      ...(configItem ? [configItem] : []),
+    ];
+
+    return result;
+  }, []);
+
+  // --- 4.8. JSX (A ESTRUTURA DA UI) ---
   return (
     <div className="fixed top-4 left-4 bottom-4 z-50">
       <aside
@@ -196,7 +215,7 @@ export default function SidebarGestor({ onExpandChange }: SidebarGestorProps) {
         {/* ITENS DO MENU */}
         <nav className="flex-1 mt-4 px-3 overflow-y-auto custom-scrollbar">
           <ul className="space-y-1">
-            {menuItems.map((item) => {
+            {sortedMenuItems.map((item) => {
               const isActive = isMenuActive(item);
               const isOpen = openMenus.includes(item.id);
               const IconComponent = item.icon;
